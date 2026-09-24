@@ -9021,6 +9021,37 @@ fn detect_repo_source_type(repo_url: &str) -> &'static str {
     "github"
 }
 
+#[tauri::command]
+pub async fn search_github_repositories(
+    query: String,
+    topics: Vec<String>,
+    language: Option<String>,
+    per_page: u8,
+    page: u8,
+    token: Option<String>,
+) -> Result<crate::github_api::search::GithubSearchResponse, String> {
+    if sync_trace_enabled() {
+        eprintln!(
+            "[sync-trace] command search_github_repositories query={} topics={} language={:?} per_page={} page={}",
+            query, topics.len(), language, per_page, page
+        );
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|error| format!("构造 HTTP 客户端失败: {error}"))?;
+    crate::github_api::search::search_repositories(
+        &client,
+        token.as_deref(),
+        &query,
+        &topics,
+        language.as_deref(),
+        per_page,
+        page,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

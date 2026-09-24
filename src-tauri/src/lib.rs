@@ -140,6 +140,7 @@ pub fn run() {
             diagnostics::record_failure_feedback,
             commands::open_tool_skills_folder,
             commands::open_path_in_finder,
+            commands::search_github_repositories,
             commands::get_repo_cache_size,
             commands::clear_repo_cache,
             commands::open_tool_mcp_config,

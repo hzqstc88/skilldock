@@ -2460,3 +2460,52 @@ export async function clearRepoCache(): Promise<void> {
   if (!isTauriRuntime()) return;
   return invoke<void>("clear_repo_cache");
 }
+
+// ====== GitHub 仓库搜索(MVP 新增能力) ======
+// 字段命名与 Rust 端 `#[serde(rename_all = "camelCase")]` 对齐
+export interface GithubSearchRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string;
+  htmlUrl: string;
+  cloneUrl: string;
+  stars: number;
+  forks: number;
+  language: string | null;
+  topics: string[];
+  updatedAt: string;
+  pushedAt: string;
+  defaultBranch: string;
+}
+
+export interface GithubSearchResponse {
+  totalCount: number;
+  incompleteResults: boolean;
+  items: GithubSearchRepository[];
+}
+
+export interface GithubSearchRequest {
+  query: string;
+  topics: string[];
+  language: string | null;
+  perPage: number;
+  page: number;
+  token?: string | null;
+}
+
+export async function searchGithubRepositories(
+  input: GithubSearchRequest,
+): Promise<GithubSearchResponse> {
+  if (!isTauriRuntime()) {
+    return { totalCount: 0, incompleteResults: false, items: [] };
+  }
+  return invoke<GithubSearchResponse>("search_github_repositories", {
+    query: input.query,
+    topics: input.topics,
+    language: input.language,
+    perPage: input.perPage,
+    page: input.page,
+    token: input.token ?? null,
+  });
+}
