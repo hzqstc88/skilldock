@@ -117,6 +117,7 @@ export function MarketRoute(props: MarketRouteProps) {
   const [internalInstallTab, setInternalInstallTab] = useState<InstallTab>("market");
   const [internalInstallCategory, setInternalInstallCategory] = useState<InstallCategory>("skill");
   const [gitInstallMode, setGitInstallMode] = useState<GitInstallMode>("url");
+  const [prefilledRepoUrl, setPrefilledRepoUrl] = useState<string | null>(null);
   const activeInstallCategory = controlledInstallCategory ?? internalInstallCategory;
   const activeInstallTab = controlledInstallTab ?? internalInstallTab;
   const [activeSourceSite, setActiveSourceSite] = useState<MarketplaceSourceSite>("skills.sh");
@@ -346,10 +347,15 @@ export function MarketRoute(props: MarketRouteProps) {
               />
             ) : null}
             {activeInstallTab === "git" && gitInstallMode === "url" ? (
-              <RepoInstallPanel />
+              <RepoInstallPanel prefilledRepoUrl={prefilledRepoUrl} />
             ) : null}
             {activeInstallTab === "git" && gitInstallMode === "search" ? (
-              <GithubSearchPanel />
+              <GithubSearchPanel
+                onSelect={(url) => {
+                  setPrefilledRepoUrl(url);
+                  setGitInstallMode("url");
+                }}
+              />
             ) : null}
             {activeInstallTab === "local" ? <LocalSkillImportList /> : null}
           </>

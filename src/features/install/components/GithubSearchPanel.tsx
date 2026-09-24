@@ -27,7 +27,8 @@ function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-export function GithubSearchPanel() {
+export function GithubSearchPanel(props: { onSelect?: (url: string) => void } = {}) {
+  const { onSelect } = props;
   const { t } = useTranslate();
   const reportFailure = useFailureReporter();
   const [keyword, setKeyword] = useState("");
@@ -194,7 +195,7 @@ export function GithubSearchPanel() {
       ) : null}
 
       {status.kind === "ok" ? (
-        <Results response={status.response} onCopy={copyCloneUrl} copiedFullName={copiedFullName} t={t} />
+        <Results response={status.response} onCopy={copyCloneUrl} copiedFullName={copiedFullName} onSelect={onSelect} t={t} />
       ) : null}
 
       {status.kind === "idle" ? (
@@ -208,11 +209,12 @@ type ResultsProps = {
   response: GithubSearchResponse;
   onCopy: (item: GithubSearchRepository) => void;
   copiedFullName: string | null;
+  onSelect?: (url: string) => void;
   t: ReturnType<typeof useTranslate>["t"];
 };
 
 function Results(props: ResultsProps) {
-  const { response, onCopy, copiedFullName, t } = props;
+  const { response, onCopy, copiedFullName, onSelect, t } = props;
   const items = response.items;
 
   return (
@@ -276,15 +278,26 @@ function Results(props: ResultsProps) {
                 <code className="github-search-result-item__cloneUrl">
                   {item.cloneUrl}
                 </code>
-                <button
-                  type="button"
-                  className="github-search-result-item__copy"
-                  onClick={() => onCopy(item)}
-                >
-                  {copiedFullName === item.fullName
-                    ? t("githubSearch.copy.done")
-                    : t("githubSearch.copy.action")}
-                </button>
+                <div className="github-search-result-item__actions">
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      className="github-search-result-item__select"
+                      onClick={() => onSelect(item.cloneUrl)}
+                    >
+                      {t("githubSearch.use.action")}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="github-search-result-item__copy"
+                    onClick={() => onCopy(item)}
+                  >
+                    {copiedFullName === item.fullName
+                      ? t("githubSearch.copy.done")
+                      : t("githubSearch.copy.action")}
+                  </button>
+                </div>
               </footer>
               <p className="github-search-result-item__hint">
                 {t("githubSearch.results.installHint", {
