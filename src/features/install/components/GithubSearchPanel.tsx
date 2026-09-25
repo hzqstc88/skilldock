@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { useTranslate } from "@/app/i18n";
 import {
@@ -8,6 +8,7 @@ import {
   probeRepositoryInstallability,
   searchGithubRepositories,
 } from "@/features/skills/api/skill-client";
+import { useLazyProbe } from "@/features/install/hooks/useLazyProbe";
 import { useFailureReporter } from "@/app/failure-feedback";
 
 type Status =
@@ -259,40 +260,25 @@ type ResultItemProps = {
   t: ReturnType<typeof useTranslate>["t"];
 };
 
-type ProbeState =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "ok"; data: RepositoryInstallability };
+import type { LazyProbeState } from "@/features/install/hooks/useLazyProbe";
 
 function ResultItem(props: ResultItemProps) {
   const { item, onCopy, copiedThisItem, onSelect, t } = props;
-  const [probe, setProbe] = useState<ProbeState>({ kind: "loading" });
-
-  useEffect(() => {
-    let active = true;
-    probeRepositoryInstallability({ owner: item.owner, name: item.name })
-      .then((data) => {
-        if (active) {
-          setProbe({ kind: "ok", data });
-        }
-      })
-      .catch((error) => {
-        if (active) {
-          setProbe({
-            kind: "error",
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [item.owner, item.name]);
+  const probeProbe = useCallback(
+    (owner: string, name: string) =>
+      probeRepositoryInstallability({ owner, name }),
+    [],
+  );
+  const { ref: probeRef, state: probe } = useLazyProbe<RepositoryInstallability>(
+    item.owner,
+    item.name,
+    probeProbe,
+  );
 
   const badges = renderProbeBadges(probe, t);
 
   return (
-    <li className="github-search-result-item">
+    <li ref={probeRef} className="github-search-result-item">
       <header className="github-search-result-item__header">
         <a
           href={item.htmlUrl}
@@ -365,9 +351,12 @@ function ResultItem(props: ResultItemProps) {
 }
 
 function renderProbeBadges(
-  probe: ProbeState,
+  probe: LazyProbeState<RepositoryInstallability>,
   t: ResultItemProps["t"],
 ) {
+  if (probe.kind === "idle") {
+    return null;
+  }
   if (probe.kind === "loading") {
     return (
       <span className="github-search-badge github-search-badge--loading">
