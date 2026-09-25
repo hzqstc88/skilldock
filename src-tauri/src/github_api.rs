@@ -667,3 +667,8 @@ mod tests {
         assert_eq!(file.sha, "blob-sha");
     }
 }
+
+// ========================= GitHub 仓库搜索 =========================
+// 作为独立子模块,详情见 ./github_search.rs。在此处仅声明以避免与 upstream 合并时产生冲突。
+#[path = "github_search.rs"]
+pub mod search;

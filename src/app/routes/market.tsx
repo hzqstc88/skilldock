@@ -8,6 +8,7 @@ import {
 import { McpMarketplacePanel } from "@/features/install/components/McpMarketplacePanel";
 import { PluginInstallPanel } from "@/features/install/components/PluginInstallPanel";
 import { RepoInstallPanel } from "@/features/install/components/RepoInstallPanel";
+import { GithubSearchPanel } from "@/features/install/components/GithubSearchPanel";
 import { LocalSkillImportList } from "@/features/local-skills/components/LocalSkillImportList";
 import { useSkillWorkspace } from "@/features/skills/state/skill-workspace";
 import type { MarketplaceSkill, MarketplaceSourceSite } from "@/features/skills/state/skill-store";
@@ -20,6 +21,12 @@ import {
 } from "@/features/skills/utils/marketplace-sources";
 
 export type InstallTab = "market" | "git" | "local";
+export type GitInstallMode = "url" | "search";
+
+export const gitInstallModes: { key: GitInstallMode; labelKey: "install.git.mode.url" | "install.git.mode.search" }[] = [
+  { key: "url", labelKey: "install.git.mode.url" },
+  { key: "search", labelKey: "install.git.mode.search" },
+];
 export type InstallCategory = "skill" | "mcp" | "plugin";
 
 export const installTabs: { key: InstallTab; labelKey: "install.tab.market" | "install.tab.git" | "install.tab.local" }[] = [
@@ -109,6 +116,8 @@ export function MarketRoute(props: MarketRouteProps) {
   } = useSkillWorkspace();
   const [internalInstallTab, setInternalInstallTab] = useState<InstallTab>("market");
   const [internalInstallCategory, setInternalInstallCategory] = useState<InstallCategory>("skill");
+  const [gitInstallMode, setGitInstallMode] = useState<GitInstallMode>("url");
+  const [prefilledRepoUrl, setPrefilledRepoUrl] = useState<string | null>(null);
   const activeInstallCategory = controlledInstallCategory ?? internalInstallCategory;
   const activeInstallTab = controlledInstallTab ?? internalInstallTab;
   const [activeSourceSite, setActiveSourceSite] = useState<MarketplaceSourceSite>("skills.sh");
@@ -329,7 +338,25 @@ export function MarketRoute(props: MarketRouteProps) {
                 }}
               />
             ) : null}
-            {activeInstallTab === "git" ? <RepoInstallPanel /> : null}
+            {activeInstallTab === "git" ? (
+              <GitInstallModeSwitcher
+                activeMode={gitInstallMode}
+                onModeChange={(mode) => {
+                  setGitInstallMode(mode);
+                }}
+              />
+            ) : null}
+            {activeInstallTab === "git" && gitInstallMode === "url" ? (
+              <RepoInstallPanel prefilledRepoUrl={prefilledRepoUrl} />
+            ) : null}
+            {activeInstallTab === "git" && gitInstallMode === "search" ? (
+              <GithubSearchPanel
+                onSelect={(url) => {
+                  setPrefilledRepoUrl(url);
+                  setGitInstallMode("url");
+                }}
+              />
+            ) : null}
             {activeInstallTab === "local" ? <LocalSkillImportList /> : null}
           </>
         ) : activeInstallCategory === "mcp" ? (
@@ -441,6 +468,37 @@ type InstallTabSwitcherProps = {
   activeInstallTab: InstallTab;
   onInstallTabChange: (tab: InstallTab) => void;
 };
+
+function GitInstallModeSwitcher(props: {
+  activeMode: GitInstallMode;
+  onModeChange: (mode: GitInstallMode) => void;
+}) {
+  const { t } = useTranslate();
+  const { activeMode, onModeChange } = props;
+  return (
+    <div
+      className="git-install-mode-row"
+      role="tablist"
+      aria-label={t("install.git.mode.aria")}
+    >
+      {gitInstallModes.map((mode) => {
+        const selected = mode.key === activeMode;
+        return (
+          <button
+            key={mode.key}
+            className={`market-tab${selected ? " is-selected" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onModeChange(mode.key)}
+          >
+            <span>{t(mode.labelKey)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function InstallTabSwitcher(props: InstallTabSwitcherProps) {
   const { t } = useTranslate();

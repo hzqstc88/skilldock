@@ -9021,6 +9021,68 @@ fn detect_repo_source_type(repo_url: &str) -> &'static str {
     "github"
 }
 
+#[tauri::command]
+pub async fn search_github_repositories(
+    query: String,
+    topics: Vec<String>,
+    language: Option<String>,
+    per_page: u8,
+    page: u8,
+    token: Option<String>,
+) -> Result<crate::github_api::search::GithubSearchResponse, String> {
+    if sync_trace_enabled() {
+        eprintln!(
+            "[sync-trace] command search_github_repositories query={} topics={} language={:?} per_page={} page={}",
+            query, topics.len(), language, per_page, page
+        );
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|error| format!("构造 HTTP 客户端失败: {error}"))?;
+    // 优先用调用方传入的 token,否则从已保存的 GitHub 凭据拿(5000 req/h)
+    let resolved_token: Option<String> = token
+        .filter(|value| !value.is_empty())
+        .or_else(crate::github_credentials::active_token);
+    crate::github_api::search::search_repositories(
+        &client,
+        resolved_token.as_deref(),
+        &query,
+        &topics,
+        language.as_deref(),
+        per_page,
+        page,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn probe_repository_installability(
+    owner: String,
+    name: String,
+    token: Option<String>,
+) -> Result<crate::github_api::search::RepositoryInstallability, String> {
+    if sync_trace_enabled() {
+        eprintln!(
+            "[sync-trace] command probe_repository_installability owner={owner} name={name}"
+        );
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|error| format!("构造 HTTP 客户端失败: {error}"))?;
+    let resolved_token: Option<String> = token
+        .filter(|value| !value.is_empty())
+        .or_else(crate::github_credentials::active_token);
+    crate::github_api::search::probe_repository_installability(
+        &client,
+        resolved_token.as_deref(),
+        &owner,
+        &name,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

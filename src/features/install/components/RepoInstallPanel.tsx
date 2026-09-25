@@ -98,7 +98,8 @@ function matchesRepoSkillCandidate(candidate: RepoSkillCandidate, query: string)
   ].some((value) => value.toLowerCase().includes(query));
 }
 
-export function RepoInstallPanel() {
+export function RepoInstallPanel(props?: { prefilledRepoUrl?: string | null }) {
+  const { prefilledRepoUrl = null } = props ?? {};
   const { t } = useTranslate();
   const { discoverRepoSkills, installFromRepo, installedSkills } = useSkillWorkspace();
   const { notify } = useNotifications();
@@ -115,6 +116,17 @@ export function RepoInstallPanel() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [cloneProgressMessage, setCloneProgressMessage] = useState<string | null>(null);
   const prevRepoInputRef = useRef(initial.repoInput);
+
+  // 当从 GitHub 搜索跳转过来时，把 prefilledRepoUrl 推到输入框并触发发现流程
+  useEffect(() => {
+    if (!prefilledRepoUrl) {
+      return;
+    }
+    if (prefilledRepoUrl === repoInput) {
+      return;
+    }
+    setRepoInput(prefilledRepoUrl);
+  }, [prefilledRepoUrl, repoInput, setRepoInput]);
 
   // 同步状态到 module-level 缓存，下次 mount 恢复
   useEffect(() => {
