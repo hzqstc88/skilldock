@@ -9040,9 +9040,13 @@ pub async fn search_github_repositories(
         .connect_timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|error| format!("构造 HTTP 客户端失败: {error}"))?;
+    // 优先用调用方传入的 token,否则从已保存的 GitHub 凭据拿(5000 req/h)
+    let resolved_token: Option<String> = token
+        .filter(|value| !value.is_empty())
+        .or_else(crate::github_credentials::active_token);
     crate::github_api::search::search_repositories(
         &client,
-        token.as_deref(),
+        resolved_token.as_deref(),
         &query,
         &topics,
         language.as_deref(),
