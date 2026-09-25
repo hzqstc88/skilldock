@@ -269,6 +269,127 @@ pub async fn search_repositories(
 
 // ========================= 单元测试 =========================
 
+// ========================= Repository Installability Probe =========================
+// 探测仓库内是否存在常见的可装入标记文件,让搜索结果一眼能区分 skill/plugin/mcp。
+// 这里走 7 次独立 contents API 探测,5000 req/h 下成本可忽略;未认证用户建议慎用。
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInstallability {
+    pub owner: String,
+    pub name: String,
+    pub has_skill: bool,
+    pub has_plugin: bool,
+    pub has_mcp: bool,
+    pub detected_files: Vec<String>,
+}
+
+const PROBE_PATHS: &[(&str, &str)] = &[
+    ("skill", ".codex-plugin/plugin.json"),
+    ("skill", "SKILL.md"),
+    ("skill", ".claude-plugin/plugin.json"),
+    ("plugin", "plugin.json"),
+    ("plugin", ".claude-plugin/plugin.json"),
+    ("mcp", "mcp.json"),
+    ("mcp", ".mcp.json"),
+];
+
+fn probe_api_url(owner: &str, repository: &str, path: &str) -> Result<Url, String> {
+    let mut url = Url::parse(GITHUB_API_BASE)
+        .map_err(|error| format!("构造 probe URL 失败: {error}"))?;
+    let path_segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| "构造 probe URL 失败".to_string())?;
+        segments.push("repos").push(owner).push(repository).push("contents");
+        for segment in path_segments {
+            segments.push(segment);
+        }
+    }
+    Ok(url)
+}
+
+fn classify_probe_path(kind: &str) -> ProbeKind {
+    match kind {
+        "skill" => ProbeKind::Skill,
+        "plugin" => ProbeKind::Plugin,
+        "mcp" => ProbeKind::Mcp,
+        _ => ProbeKind::Other,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProbeKind {
+    Skill,
+    Plugin,
+    Mcp,
+    Other,
+}
+
+async fn check_path_exists(
+    client: &Client,
+    token: &str,
+    owner: &str,
+    repository: &str,
+    path: &str,
+) -> bool {
+    let url = match probe_api_url(owner, repository, path) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    match request(client, Method::GET, url.as_str(), token)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+    {
+        Ok(response) => response.status() == StatusCode::OK,
+        Err(_) => false,
+    }
+}
+
+/// 探测仓库是否含可装入 SkillDock / Codex / Claude / MCP 标记文件。
+/// 失败路径不返回 Err,只在 `detected_files` 为空时让上层判定无法识别。
+pub async fn probe_repository_installability(
+    client: &Client,
+    token: Option<&str>,
+    owner: &str,
+    name: &str,
+) -> Result<RepositoryInstallability, String> {
+    if owner.trim().is_empty() || name.trim().is_empty() {
+        return Err("probe 需要 owner 和 name 均非空".to_string());
+    }
+    let token_value = token.unwrap_or("");
+    let mut detected_files: Vec<String> = Vec::new();
+    let mut has_skill = false;
+    let mut has_plugin = false;
+    let mut has_mcp = false;
+    for (kind, path) in PROBE_PATHS {
+        let exists = check_path_exists(client, token_value, owner, name, path).await;
+        if !exists {
+            continue;
+        }
+        detected_files.push((*path).to_string());
+        match classify_probe_path(kind) {
+            ProbeKind::Skill => has_skill = true,
+            ProbeKind::Plugin => has_plugin = true,
+            ProbeKind::Mcp => has_mcp = true,
+            ProbeKind::Other => {}
+        }
+    }
+    Ok(RepositoryInstallability {
+        owner: owner.to_string(),
+        name: name.to_string(),
+        has_skill,
+        has_plugin,
+        has_mcp,
+        detected_files,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,3 +556,73 @@ mod tests {
         assert_eq!(result.topics, Vec::<String>::new());
     }
 }
+
+    #[test]
+    fn build_probe_api_url_for_root_file() {
+        let url = probe_api_url("octo", "cat", "SKILL.md").expect("构造 URL");
+        assert_eq!(
+            url.as_str(),
+            "https://api.github.com/repos/octo/cat/contents/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn build_probe_api_url_for_nested_file() {
+        let url =
+            probe_api_url("octo", "cat", ".codex-plugin/plugin.json").expect("构造 URL");
+        assert_eq!(
+            url.as_str(),
+            "https://api.github.com/repos/octo/cat/contents/.codex-plugin/plugin.json"
+        );
+    }
+
+    #[test]
+    fn build_probe_api_url_escapes_special_characters() {
+        let url = probe_api_url("octo", "cat", "skill hub/file.md").expect("构造 URL");
+        assert_eq!(
+            url.as_str(),
+            "https://api.github.com/repos/octo/cat/contents/skill%20hub/file.md"
+        );
+    }
+
+    #[test]
+    fn classifies_probe_paths_into_three_kinds() {
+        let mut has_skill = false;
+        let mut has_plugin = false;
+        let mut has_mcp = false;
+        for (kind, _path) in PROBE_PATHS {
+            match classify_probe_path(kind) {
+                ProbeKind::Skill => has_skill = true,
+                ProbeKind::Plugin => has_plugin = true,
+                ProbeKind::Mcp => has_mcp = true,
+                ProbeKind::Other => {}
+            }
+        }
+        assert!(has_skill, "应至少一个 skill 路径");
+        assert!(has_plugin, "应至少一个 plugin 路径");
+        assert!(has_mcp, "应至少一个 mcp 路径");
+    }
+
+    #[test]
+    fn classify_probe_path_handles_unknown_kind() {
+        assert_eq!(classify_probe_path("nope"), ProbeKind::Other);
+        assert_eq!(classify_probe_path(""), ProbeKind::Other);
+    }
+
+    #[test]
+    fn serialize_installability_with_camel_case() {
+        let value = RepositoryInstallability {
+            owner: "octo".to_string(),
+            name: "cat".to_string(),
+            has_skill: true,
+            has_plugin: false,
+            has_mcp: true,
+            detected_files: vec!["SKILL.md".to_string(), "mcp.json".to_string()],
+        };
+        let json = serde_json::to_string(&value).expect("serialize");
+        assert!(json.contains("hasSkill"));
+        assert!(json.contains("hasPlugin"));
+        assert!(json.contains("hasMcp"));
+        assert!(json.contains("\"owner\""));
+        assert!(json.contains("detectedFiles"));
+    }

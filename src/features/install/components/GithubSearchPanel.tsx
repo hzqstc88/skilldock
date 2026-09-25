@@ -4,6 +4,8 @@ import { useTranslate } from "@/app/i18n";
 import {
   type GithubSearchRepository,
   type GithubSearchResponse,
+  type RepositoryInstallability,
+  probeRepositoryInstallability,
   searchGithubRepositories,
 } from "@/features/skills/api/skill-client";
 import { useFailureReporter } from "@/app/failure-feedback";
@@ -234,80 +236,181 @@ function Results(props: ResultsProps) {
       ) : (
         <ol className="github-search-results-list">
           {items.map((item) => (
-            <li
+            <ResultItem
               key={item.fullName}
-              className="github-search-result-item"
-            >
-              <header className="github-search-result-item__header">
-                <a
-                  href={item.htmlUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="github-search-result-item__name"
-                >
-                  {item.fullName}
-                </a>
-                <span className="github-search-result-item__stars">
-                  ★ {formatCount(item.stars)}
-                </span>
-                {item.language ? (
-                  <span className="github-search-result-item__language">
-                    {item.language}
-                  </span>
-                ) : null}
-              </header>
-              {item.description ? (
-                <p className="github-search-result-item__description">
-                  {item.description}
-                </p>
-              ) : (
-                <p className="github-search-result-item__description is-empty">
-                  {t("githubSearch.results.noDescription")}
-                </p>
-              )}
-              {item.topics.length > 0 ? (
-                <ul className="github-search-result-item__topics">
-                  {item.topics.map((topic) => (
-                    <li key={topic} className="github-search-result-item__topic">
-                      {topic}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <footer className="github-search-result-item__footer">
-                <code className="github-search-result-item__cloneUrl">
-                  {item.cloneUrl}
-                </code>
-                <div className="github-search-result-item__actions">
-                  {onSelect ? (
-                    <button
-                      type="button"
-                      className="github-search-result-item__select"
-                      onClick={() => onSelect(item.cloneUrl)}
-                    >
-                      {t("githubSearch.use.action")}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="github-search-result-item__copy"
-                    onClick={() => onCopy(item)}
-                  >
-                    {copiedFullName === item.fullName
-                      ? t("githubSearch.copy.done")
-                      : t("githubSearch.copy.action")}
-                  </button>
-                </div>
-              </footer>
-              <p className="github-search-result-item__hint">
-                {t("githubSearch.results.installHint", {
-                  fullName: item.fullName,
-                })}
-              </p>
-            </li>
+              item={item}
+              onCopy={onCopy}
+              copiedThisItem={copiedFullName === item.fullName}
+              onSelect={onSelect}
+              t={t}
+            />
           ))}
         </ol>
       )}
     </section>
   );
 }
+
+type ResultItemProps = {
+  item: GithubSearchRepository;
+  onCopy: (item: GithubSearchRepository) => void;
+  copiedThisItem: boolean;
+  onSelect?: (url: string) => void;
+  t: ReturnType<typeof useTranslate>["t"];
+};
+
+type ProbeState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ok"; data: RepositoryInstallability };
+
+function ResultItem(props: ResultItemProps) {
+  const { item, onCopy, copiedThisItem, onSelect, t } = props;
+  const [probe, setProbe] = useState<ProbeState>({ kind: "loading" });
+
+  useEffect(() => {
+    let active = true;
+    probeRepositoryInstallability({ owner: item.owner, name: item.name })
+      .then((data) => {
+        if (active) {
+          setProbe({ kind: "ok", data });
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setProbe({
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [item.owner, item.name]);
+
+  const badges = renderProbeBadges(probe, t);
+
+  return (
+    <li className="github-search-result-item">
+      <header className="github-search-result-item__header">
+        <a
+          href={item.htmlUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="github-search-result-item__name"
+        >
+          {item.fullName}
+        </a>
+        <span className="github-search-result-item__stars">
+          ★ {formatCount(item.stars)}
+        </span>
+        {item.language ? (
+          <span className="github-search-result-item__language">
+            {item.language}
+          </span>
+        ) : null}
+        <span className="github-search-result-item__badges">{badges}</span>
+      </header>
+      {item.description ? (
+        <p className="github-search-result-item__description">
+          {item.description}
+        </p>
+      ) : (
+        <p className="github-search-result-item__description is-empty">
+          {t("githubSearch.results.noDescription")}
+        </p>
+      )}
+      {item.topics.length > 0 ? (
+        <ul className="github-search-result-item__topics">
+          {item.topics.map((topic) => (
+            <li key={topic} className="github-search-result-item__topic">
+              {topic}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <footer className="github-search-result-item__footer">
+        <code className="github-search-result-item__cloneUrl">
+          {item.cloneUrl}
+        </code>
+        <div className="github-search-result-item__actions">
+          {onSelect ? (
+            <button
+              type="button"
+              className="github-search-result-item__select"
+              onClick={() => onSelect(item.cloneUrl)}
+            >
+              {t("githubSearch.use.action")}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="github-search-result-item__copy"
+            onClick={() => onCopy(item)}
+          >
+            {copiedThisItem
+              ? t("githubSearch.copy.done")
+              : t("githubSearch.copy.action")}
+          </button>
+        </div>
+      </footer>
+      <p className="github-search-result-item__hint">
+        {t("githubSearch.results.installHint", {
+          fullName: item.fullName,
+        })}
+      </p>
+    </li>
+  );
+}
+
+function renderProbeBadges(
+  probe: ProbeState,
+  t: ResultItemProps["t"],
+) {
+  if (probe.kind === "loading") {
+    return (
+      <span className="github-search-badge github-search-badge--loading">
+        {t("githubSearch.probe.loading")}
+      </span>
+    );
+  }
+  if (probe.kind === "error") {
+    return (
+      <span
+        className="github-search-badge github-search-badge--error"
+        title={probe.message}
+      >
+        {t("githubSearch.probe.failed")}
+      </span>
+    );
+  }
+  const { hasSkill, hasPlugin, hasMcp } = probe.data;
+  if (!hasSkill && !hasPlugin && !hasMcp) {
+    return (
+      <span className="github-search-badge github-search-badge--neutral">
+        {t("githubSearch.probe.unknown")}
+      </span>
+    );
+  }
+  return (
+    <>
+      {hasSkill ? (
+        <span className="github-search-badge github-search-badge--ok">
+          {t("githubSearch.probe.skill")}
+        </span>
+      ) : null}
+      {hasPlugin ? (
+        <span className="github-search-badge github-search-badge--ok">
+          {t("githubSearch.probe.plugin")}
+        </span>
+      ) : null}
+      {hasMcp ? (
+        <span className="github-search-badge github-search-badge--ok">
+          {t("githubSearch.probe.mcp")}
+        </span>
+      ) : null}
+    </>
+  );
+}
+

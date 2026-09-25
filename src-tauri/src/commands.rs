@@ -9056,6 +9056,33 @@ pub async fn search_github_repositories(
     .await
 }
 
+#[tauri::command]
+pub async fn probe_repository_installability(
+    owner: String,
+    name: String,
+    token: Option<String>,
+) -> Result<crate::github_api::search::RepositoryInstallability, String> {
+    if sync_trace_enabled() {
+        eprintln!(
+            "[sync-trace] command probe_repository_installability owner={owner} name={name}"
+        );
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|error| format!("构造 HTTP 客户端失败: {error}"))?;
+    let resolved_token: Option<String> = token
+        .filter(|value| !value.is_empty())
+        .or_else(crate::github_credentials::active_token);
+    crate::github_api::search::probe_repository_installability(
+        &client,
+        resolved_token.as_deref(),
+        &owner,
+        &name,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

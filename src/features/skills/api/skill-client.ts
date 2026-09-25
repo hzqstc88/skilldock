@@ -2509,3 +2509,40 @@ export async function searchGithubRepositories(
     token: input.token ?? null,
   });
 }
+
+// ====== 仓库可装入性探测(MVP 增强) ======
+
+export interface RepositoryInstallability {
+  owner: string;
+  name: string;
+  hasSkill: boolean;
+  hasPlugin: boolean;
+  hasMcp: boolean;
+  detectedFiles: string[];
+}
+
+export interface ProbeRepositoryRequest {
+  owner: string;
+  name: string;
+  token?: string | null;
+}
+
+export async function probeRepositoryInstallability(
+  input: ProbeRepositoryRequest,
+): Promise<RepositoryInstallability> {
+  if (!isTauriRuntime()) {
+    return {
+      owner: input.owner,
+      name: input.name,
+      hasSkill: false,
+      hasPlugin: false,
+      hasMcp: false,
+      detectedFiles: [],
+    };
+  }
+  return invoke<RepositoryInstallability>("probe_repository_installability", {
+    owner: input.owner,
+    name: input.name,
+    token: input.token ?? null,
+  });
+}
